@@ -127,6 +127,7 @@ input[type=range]{width:100%;accent-color:var(--amber)}
 #radarplay{background:var(--amber);color:#1A1206;border:none;border-radius:3px;width:30px;height:30px;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none}
 #radarsegs{display:flex;gap:2px}
 .seg{width:11px;height:18px;background:#33506a;border-radius:1px;cursor:pointer;border:none;padding:0}
+.seg.now{background:#6b4f2a}
 .seg.cur{outline:2px solid var(--amber);outline-offset:0;background:var(--amber)}
 #radartime{font-family:var(--mono);font-size:11px;color:var(--text);min-width:96px;text-align:right;flex:none}
 #radartime b{color:var(--cyan)}
@@ -166,12 +167,31 @@ input[type=range]{width:100%;accent-color:var(--amber)}
 @media (max-width:860px){
   .brand span{display:none}
   .clock{display:none}
+  header{height:48px;gap:8px;padding:0 10px}
+  .brand h1{font-size:21px}
+  .iconbtn{padding:6px 9px}
+  #strip{height:30px}
   main{position:relative}
-  aside{position:absolute;left:0;right:0;bottom:0;top:auto;width:100%;height:54%;z-index:900;border-right:none;border-top:1px solid var(--line);transform:translateY(calc(100% - 42px));transition:transform .25s}
+  /* bottom sheet: peeks the grab-handle + tabs; drags up to ~80% */
+  aside{position:absolute;left:0;right:0;bottom:0;top:auto;width:100%;height:80%;z-index:900;
+    border-right:none;border-top:1px solid var(--line);border-radius:16px 16px 0 0;
+    box-shadow:0 -10px 30px rgba(0,0,0,.55);
+    transform:translateY(calc(100% - 120px));transition:transform .28s cubic-bezier(.4,0,.2,1)}
   aside.open{transform:translateY(0)}
-  #paneltoggle{display:block;width:100%;background:var(--panel2);border:none;border-bottom:1px solid var(--line);color:var(--amber);font-family:var(--display);font-weight:700;font-size:14px;letter-spacing:.1em;text-transform:uppercase;padding:11px}
-  #reportbtn{bottom:auto;top:14px}
-  #radarbar{bottom:52px}
+  #paneltoggle{display:block;width:100%;background:transparent;border:none;padding:9px 0 5px;position:relative;touch-action:none}
+  #paneltoggle::before{content:'';display:block;width:40px;height:4px;border-radius:2px;background:var(--dim);opacity:.55;margin:0 auto 7px}
+  #paneltoggle .pt-label{font-family:var(--display);font-weight:700;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber)}
+  nav{position:sticky;top:0;background:var(--panel);z-index:5}
+  nav button{padding:14px 0;font-size:13px}
+  .pane{-webkit-overflow-scrolling:touch}
+  .sw{width:44px;height:25px}
+  .sw::after{width:19px;height:19px}
+  .sw.on::after{transform:translateX(19px)}
+  .minibtn{padding:8px 11px;font-size:11px}
+  #reportbtn{bottom:auto;top:11px;right:10px;padding:9px 14px;font-size:14px}
+  #radarbar{bottom:132px;padding:6px 9px;gap:7px}
+  #radartime{min-width:84px;font-size:10px}
+  .seg{width:9px}
 }
 .leaflet-popup-content-wrapper{background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:5px;font-size:12.5px}
 .leaflet-popup-tip{background:var(--panel)}
@@ -196,7 +216,7 @@ input[type=range]{width:100%;accent-color:var(--amber)}
 
 <main>
   <aside id="panel">
-    <button id="paneltoggle">▲ &nbsp;Panel</button>
+    <button id="paneltoggle"><span class="pt-label">Details &amp; layers</span></button>
     <nav>
       <button data-pane="me" class="on">Near Me</button>
       <button data-pane="alerts">Alerts</button>
@@ -238,8 +258,8 @@ input[type=range]{width:100%;accent-color:var(--amber)}
         <div class="lyr"><label>Community reports<small>Crowdsourced — trees, flooding, roads</small></label><button class="sw on" data-layer="reports" aria-label="Toggle community reports"></button></div>
       </div>
       <div class="grp">
-        <h3>Map overlays — needs a free key</h3>
-        <div class="note" style="padding:0 0 8px">Paste a free key from <a href="https://openweathermap.org/api" target="_blank" rel="noopener">openweathermap.org</a> to add these layers to the map.</div>
+        <h3>Map overlays</h3>
+        <div class="note" style="padding:0 0 8px">Your OpenWeather key is loaded — flip any of these on. (Edit the key below to use your own.)</div>
         <input id="owmkey" class="keyfield" placeholder="OpenWeather API key" autocomplete="off">
         <div class="lyr"><label>Clouds</label><button class="sw" data-owm="clouds_new" aria-label="Clouds" disabled></button></div>
         <div class="lyr"><label>Precipitation</label><button class="sw" data-owm="precipitation_new" aria-label="Precipitation" disabled></button></div>
@@ -397,52 +417,52 @@ function stormMotion(props){
 }
 
 /* ====================================================================
-   RADAR — Iowa Environmental Mesonet WMS (time-stamped NEXRAD N0Q)
-   Renders cleanly at every zoom; animated via a time series of frames.
-   Swap source by changing RADAR_WMS / RADAR_LAYER below.
+   RADAR — RainViewer animated frames (distinct image per timestamp)
+   maxNativeZoom:10 keeps tiles valid at every zoom (fixes the
+   "Zoom Level Not Supported" placeholders). Auto-plays and loops.
    ==================================================================== */
-const RADAR_WMS='https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi';
-const RADAR_LAYER='nexrad-n0q';
-const RADAR_N=13, RADAR_STEP=5*60*1000;          /* 13 frames × 5 min ≈ 1 hr */
-let radarFrames=[], radarLayers={}, radarIdx=0, radarPlaying=true, radarTimer=null, radarOn=true, radarOpacity=0.75;
-const isoZ = ms => new Date(ms).toISOString().replace(/\.\d+Z$/,'Z');
-function radarFrameTimes(){
-  const slot=Math.floor(Date.now()/RADAR_STEP)*RADAR_STEP, out=[];
-  for(let i=RADAR_N-1;i>=0;i--) out.push(slot - i*RADAR_STEP);
-  return out;
-}
-function radarWmsLayer(ms){
-  return L.tileLayer.wms(RADAR_WMS, {
-    layers:RADAR_LAYER, format:'image/png', transparent:true,
-    TIME:isoZ(ms), opacity:0, zIndex:300,
-    attribution:'Radar: NWS / Iowa Environmental Mesonet'
-  });
-}
-function loadRadarFrames(){
-  const times=radarFrameTimes();
-  radarFrames=times.map(ms=>({ms}));
-  Object.keys(radarLayers).forEach(k=>{ if(!radarFrames.find(f=>String(f.ms)===k)){ map.removeLayer(radarLayers[k]); delete radarLayers[k]; } });
-  radarFrames.forEach(f=>{ if(!radarLayers[f.ms]){ const l=radarWmsLayer(f.ms); radarLayers[f.ms]=l; if(radarOn) l.addTo(map); } });
-  if(radarIdx>=radarFrames.length) radarIdx=radarFrames.length-1;
-  buildTimeline();
-  if(radarOn){ showRadarFrame(radarIdx); if(radarPlaying) playRadar(); }
-  document.getElementById('radarbar').style.display = radarOn && radarFrames.length ? 'flex':'none';
+const RV_COLOR=2;        /* 2 = Universal Blue */
+const RV_OPTS='1_1';     /* smooth_snow */
+let radarFrames=[], radarLayers={}, radarIdx=0, radarPlaying=true, radarTimer=null, radarOn=true, radarOpacity=0.78, rvHost='';
+
+async function loadRadarFrames(){
+  try{
+    const d=await (await fetch('https://api.rainviewer.com/public/weather-maps.json')).json();
+    rvHost=d.host;
+    const past=(d.radar?.past||[]).slice(-10).map(f=>({time:f.time, path:f.path, kind:'past'}));
+    const now =(d.radar?.nowcast||[]).map(f=>({time:f.time, path:f.path, kind:'now'}));
+    radarFrames=[...past, ...now];
+    Object.keys(radarLayers).forEach(k=>{ if(!radarFrames.find(f=>String(f.time)===k)){ map.removeLayer(radarLayers[k]); delete radarLayers[k]; } });
+    radarFrames.forEach(f=>{
+      if(!radarLayers[f.time]){
+        const url=`${rvHost}${f.path}/256/{z}/{x}/{y}/${RV_COLOR}/${RV_OPTS}.png`;
+        const layer=L.tileLayer(url, {opacity:0, zIndex:300, maxZoom:18, maxNativeZoom:10, attribution:'Radar © RainViewer'});
+        radarLayers[f.time]=layer;
+        if(radarOn) layer.addTo(map);
+      }
+    });
+    if(radarIdx>=radarFrames.length) radarIdx=Math.max(0, radarFrames.length-1);
+    buildTimeline();
+    if(radarOn){ showRadarFrame(radarIdx); if(radarPlaying) playRadar(); }
+    document.getElementById('radarbar').style.display = radarOn && radarFrames.length ? 'flex':'none';
+  }catch(e){ console.warn('radar load failed', e); }
 }
 function showRadarFrame(i){
   if(!radarFrames.length) return;
   radarIdx=(i+radarFrames.length)%radarFrames.length;
   const f=radarFrames[radarIdx];
-  Object.entries(radarLayers).forEach(([k,l])=> l.setOpacity(String(f.ms)===k?radarOpacity:0));
+  Object.entries(radarLayers).forEach(([k,l])=> l.setOpacity(String(f.time)===k?radarOpacity:0));
   document.querySelectorAll('#radarsegs .seg').forEach((s,idx)=>s.classList.toggle('cur', idx===radarIdx));
-  const off=Math.round((f.ms-Date.now())/60000);
-  const hhmm=new Date(f.ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  document.getElementById('radartime').innerHTML = `${hhmm} · ${off>=-2?'<b>NOW</b>':off+'m'}`;
+  const off=Math.round((f.time*1000-Date.now())/60000);
+  const hhmm=new Date(f.time*1000).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const rel = f.kind==='now' ? `<b>+${off}m</b>` : (off>=-2?'<b>NOW</b>':off+'m');
+  document.getElementById('radartime').innerHTML = `${hhmm} · ${rel}`;
 }
 function buildTimeline(){
   const segs=document.getElementById('radarsegs'); segs.innerHTML='';
   radarFrames.forEach((f,idx)=>{
-    const b=document.createElement('button'); b.className='seg';
-    b.title=new Date(f.ms).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+    const b=document.createElement('button'); b.className='seg'+(f.kind==='now'?' now':'');
+    b.title=new Date(f.time*1000).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
     b.addEventListener('click', ()=>{ pauseRadar(); showRadarFrame(idx); });
     segs.appendChild(b);
   });
@@ -450,25 +470,30 @@ function buildTimeline(){
 function playRadar(){
   radarPlaying=true; clearInterval(radarTimer);
   document.getElementById('radarplay').textContent='⏸';
-  radarTimer=setInterval(()=>{ showRadarFrame(radarIdx===radarFrames.length-1?0:radarIdx+1); }, 550);
+  radarTimer=setInterval(()=>{ showRadarFrame(radarIdx>=radarFrames.length-1?0:radarIdx+1); }, 500);
 }
 function pauseRadar(){ radarPlaying=false; clearInterval(radarTimer); document.getElementById('radarplay').textContent='▶'; }
 document.getElementById('radarplay').addEventListener('click', ()=> radarPlaying?pauseRadar():playRadar());
 document.getElementById('radarOpacity').addEventListener('input', e=>{
   radarOpacity=e.target.value/100;
-  if(radarFrames[radarIdx]) radarLayers[radarFrames[radarIdx].ms]?.setOpacity(radarOpacity);
+  if(radarFrames[radarIdx]) radarLayers[radarFrames[radarIdx].time]?.setOpacity(radarOpacity);
 });
 function setRadarVisible(on){
   radarOn=on;
   document.getElementById('radarbar').style.display = on && radarFrames.length ? 'flex':'none';
-  if(on){ radarFrames.forEach(f=>{ if(radarLayers[f.ms] && !map.hasLayer(radarLayers[f.ms])) radarLayers[f.ms].addTo(map); }); showRadarFrame(radarIdx); if(radarPlaying) playRadar(); }
+  if(on){ radarFrames.forEach(f=>{ if(radarLayers[f.time] && !map.hasLayer(radarLayers[f.time])) radarLayers[f.time].addTo(map); }); showRadarFrame(radarIdx); if(radarPlaying) playRadar(); }
   else { pauseRadar(); Object.values(radarLayers).forEach(l=>l.setOpacity(0)); }
 }
 
 /* ====================================================================
    OPENWEATHER MAP OVERLAYS (optional, needs a free key)
    ==================================================================== */
-let owmKey=''; try{ owmKey=localStorage.getItem('owmkey')||''; }catch(_){}
+/* NOTE: this key ships in the page source. On a public site anyone can read it
+   and spend against your quota. For a free key the risk is low, but you can
+   restrict it by domain in your OpenWeather dashboard, or clear it and let each
+   user paste their own in the Layers tab. */
+const OWM_DEFAULT_KEY='aeb15c5d78501d68f338ebf611445ec9';
+let owmKey=OWM_DEFAULT_KEY; try{ const s=localStorage.getItem('owmkey'); if(s) owmKey=s; }catch(_){}
 const owmLayers={};
 const owmTile = layer => L.tileLayer(`https://tile.openweathermap.org/map/${layer}/{z}/{x}/{y}.png?appid=${owmKey}`, {opacity:.6, maxZoom:18, attribution:'© OpenWeather'});
 function setOwmEnabled(on){
@@ -501,9 +526,21 @@ document.querySelectorAll('nav button').forEach(b => b.addEventListener('click',
   document.querySelectorAll('nav button').forEach(x => x.classList.remove('on'));
   document.querySelectorAll('.pane').forEach(x => x.classList.remove('on'));
   b.classList.add('on'); document.getElementById('pane-' + b.dataset.pane).classList.add('on');
+  if(window.innerWidth<=860) panel.classList.add('open');   /* reveal content on tab tap */
 }));
 const panel=document.getElementById('panel');
-document.getElementById('paneltoggle').addEventListener('click', () => panel.classList.toggle('open'));
+const pToggle=document.getElementById('paneltoggle');
+pToggle.addEventListener('click', () => panel.classList.toggle('open'));
+/* drag the handle up/down to open/close the sheet */
+let dragY=null;
+pToggle.addEventListener('touchstart', e=>{ dragY=e.touches[0].clientY; }, {passive:true});
+pToggle.addEventListener('touchmove', e=>{
+  if(dragY==null) return;
+  const dy=e.touches[0].clientY-dragY;
+  if(dy<-24){ panel.classList.add('open'); dragY=null; }
+  else if(dy>24){ panel.classList.remove('open'); dragY=null; }
+}, {passive:true});
+pToggle.addEventListener('touchend', ()=>{ dragY=null; }, {passive:true});
 setInterval(() => { document.getElementById('clock').textContent = new Date().toLocaleTimeString('en-US',{hour12:false}) + ' ET'; }, 1000);
 
 /* ====================================================================
