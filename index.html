@@ -56,7 +56,7 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
 .pane::-webkit-scrollbar{width:8px}.pane::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 
 .grp{padding:12px 14px;border-bottom:1px solid var(--line)}
-.grp h3{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
+.grp h3, #me-cond>h3, #me-air>h3, #me-hourly>h3{font-family:var(--display);font-weight:600;font-size:13px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin-bottom:8px}
 .lyr{display:flex;align-items:center;gap:10px;padding:6px 0}
 .lyr label{flex:1;font-size:13px}
 .lyr small{display:block;color:var(--dim);font-size:11px;margin-top:1px}
@@ -103,6 +103,8 @@ input[type=range]{width:100%;accent-color:var(--amber)}
 .nearrow .nd{font-family:var(--mono);color:var(--cyan);font-size:13px;font-weight:500}
 .nearrow .ne{font-size:12px;color:var(--dim)}
 
+#me-cond, #me-air, #me-hourly{padding:12px 14px;border-bottom:1px solid var(--line)}
+#me-cond:empty, #me-air:empty, #me-hourly:empty{padding:0;border:none}
 .condgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;margin-top:4px}
 .condcell .k{font-family:var(--mono);font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em}
 .condcell .v{font-family:var(--display);font-weight:600;font-size:22px;letter-spacing:.02em;margin-top:1px}
@@ -246,10 +248,10 @@ input[type=range]{width:100%;accent-color:var(--amber)}
     <!-- LAYERS -->
     <div class="pane" id="pane-layers">
       <div class="grp">
-        <h3>Radar</h3>
-        <div class="lyr"><label>Animated radar<small>NWS / Iowa Mesonet · ~1 hr history, 5-min steps</small></label><button class="sw on" data-layer="radar" aria-label="Toggle radar"></button></div>
+        <h3>Precipitation radar</h3>
+        <div class="lyr"><label>Live precipitation<small id="precipstamp">Loading…</small></label><button class="sw on" data-layer="radar" aria-label="Toggle precipitation"></button></div>
         <span class="seglabel">Opacity</span>
-        <input type="range" id="radarOpacity" min="20" max="100" value="75" aria-label="Radar opacity">
+        <input type="range" id="radarOpacity" min="20" max="100" value="60" aria-label="Precipitation opacity">
       </div>
       <div class="grp">
         <h3>Warnings &amp; hydrology</h3>
@@ -262,7 +264,6 @@ input[type=range]{width:100%;accent-color:var(--amber)}
         <div class="note" style="padding:0 0 8px">Your OpenWeather key is loaded — flip any of these on. (Edit the key below to use your own.)</div>
         <input id="owmkey" class="keyfield" placeholder="OpenWeather API key" autocomplete="off">
         <div class="lyr"><label>Clouds</label><button class="sw" data-owm="clouds_new" aria-label="Clouds" disabled></button></div>
-        <div class="lyr"><label>Precipitation</label><button class="sw" data-owm="precipitation_new" aria-label="Precipitation" disabled></button></div>
         <div class="lyr"><label>Wind speed</label><button class="sw" data-owm="wind_new" aria-label="Wind" disabled></button></div>
         <div class="lyr"><label>Pressure</label><button class="sw" data-owm="pressure_new" aria-label="Pressure" disabled></button></div>
         <div class="lyr"><label>Temperature</label><button class="sw" data-owm="temp_new" aria-label="Temperature" disabled></button></div>
@@ -293,12 +294,6 @@ input[type=range]{width:100%;accent-color:var(--amber)}
   </aside>
 
   <div id="map"></div>
-
-  <div id="radarbar">
-    <button id="radarplay" title="Play / pause">⏸</button>
-    <div id="radarsegs"></div>
-    <span id="radartime">--:--</span>
-  </div>
 
   <button id="reportbtn">＋ Report</button>
 </main>
@@ -417,73 +412,35 @@ function stormMotion(props){
 }
 
 /* ====================================================================
-   RADAR — RainViewer animated frames (distinct image per timestamp)
-   maxNativeZoom:10 keeps tiles valid at every zoom (fixes the
-   "Zoom Level Not Supported" placeholders). Auto-plays and loops.
+   RADAR — OpenWeather precipitation tiles (current intensity)
+   RainViewer's keyless tiles returned "Zoom Level Not Supported" at every
+   zoom in deployment; OpenWeather tiles render reliably (proven on-device).
+   Free-tier OWM is current-only, so this is LIVE precipitation, not a
+   past-hour animation. Source is the single swap point below.
    ==================================================================== */
-const RV_COLOR=2;        /* 2 = Universal Blue */
-const RV_OPTS='1_1';     /* smooth_snow */
-let radarFrames=[], radarLayers={}, radarIdx=0, radarPlaying=true, radarTimer=null, radarOn=true, radarOpacity=0.78, rvHost='';
-
-async function loadRadarFrames(){
-  try{
-    const d=await (await fetch('https://api.rainviewer.com/public/weather-maps.json')).json();
-    rvHost=d.host;
-    const past=(d.radar?.past||[]).slice(-10).map(f=>({time:f.time, path:f.path, kind:'past'}));
-    const now =(d.radar?.nowcast||[]).map(f=>({time:f.time, path:f.path, kind:'now'}));
-    radarFrames=[...past, ...now];
-    Object.keys(radarLayers).forEach(k=>{ if(!radarFrames.find(f=>String(f.time)===k)){ map.removeLayer(radarLayers[k]); delete radarLayers[k]; } });
-    radarFrames.forEach(f=>{
-      if(!radarLayers[f.time]){
-        const url=`${rvHost}${f.path}/256/{z}/{x}/{y}/${RV_COLOR}/${RV_OPTS}.png`;
-        const layer=L.tileLayer(url, {opacity:0, zIndex:300, maxZoom:18, maxNativeZoom:10, attribution:'Radar © RainViewer'});
-        radarLayers[f.time]=layer;
-        if(radarOn) layer.addTo(map);
-      }
-    });
-    if(radarIdx>=radarFrames.length) radarIdx=Math.max(0, radarFrames.length-1);
-    buildTimeline();
-    if(radarOn){ showRadarFrame(radarIdx); if(radarPlaying) playRadar(); }
-    document.getElementById('radarbar').style.display = radarOn && radarFrames.length ? 'flex':'none';
-  }catch(e){ console.warn('radar load failed', e); }
+let precipLayer=null, precipOn=true, precipOpacity=0.6, precipStamp=0;
+function buildPrecip(){
+  if(precipLayer){ map.removeLayer(precipLayer); precipLayer=null; }
+  if(!owmKey) { updatePrecipStamp(); return; }
+  precipLayer=L.tileLayer(`https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=${owmKey}`,
+    {opacity:precipOpacity, zIndex:300, maxZoom:18, attribution:'Precip © OpenWeather'});
+  if(precipOn) precipLayer.addTo(map);
+  precipStamp=Date.now(); updatePrecipStamp();
 }
-function showRadarFrame(i){
-  if(!radarFrames.length) return;
-  radarIdx=(i+radarFrames.length)%radarFrames.length;
-  const f=radarFrames[radarIdx];
-  Object.entries(radarLayers).forEach(([k,l])=> l.setOpacity(String(f.time)===k?radarOpacity:0));
-  document.querySelectorAll('#radarsegs .seg').forEach((s,idx)=>s.classList.toggle('cur', idx===radarIdx));
-  const off=Math.round((f.time*1000-Date.now())/60000);
-  const hhmm=new Date(f.time*1000).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-  const rel = f.kind==='now' ? `<b>+${off}m</b>` : (off>=-2?'<b>NOW</b>':off+'m');
-  document.getElementById('radartime').innerHTML = `${hhmm} · ${rel}`;
+function updatePrecipStamp(){
+  const el=document.getElementById('precipstamp');
+  if(!el) return;
+  el.textContent = !owmKey ? 'Add an OpenWeather key in this tab to show precipitation'
+    : precipOn ? ('Live · loaded '+new Date(precipStamp).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}))
+    : 'Off';
 }
-function buildTimeline(){
-  const segs=document.getElementById('radarsegs'); segs.innerHTML='';
-  radarFrames.forEach((f,idx)=>{
-    const b=document.createElement('button'); b.className='seg'+(f.kind==='now'?' now':'');
-    b.title=new Date(f.time*1000).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
-    b.addEventListener('click', ()=>{ pauseRadar(); showRadarFrame(idx); });
-    segs.appendChild(b);
-  });
-}
-function playRadar(){
-  radarPlaying=true; clearInterval(radarTimer);
-  document.getElementById('radarplay').textContent='⏸';
-  radarTimer=setInterval(()=>{ showRadarFrame(radarIdx>=radarFrames.length-1?0:radarIdx+1); }, 500);
-}
-function pauseRadar(){ radarPlaying=false; clearInterval(radarTimer); document.getElementById('radarplay').textContent='▶'; }
-document.getElementById('radarplay').addEventListener('click', ()=> radarPlaying?pauseRadar():playRadar());
 document.getElementById('radarOpacity').addEventListener('input', e=>{
-  radarOpacity=e.target.value/100;
-  if(radarFrames[radarIdx]) radarLayers[radarFrames[radarIdx].time]?.setOpacity(radarOpacity);
+  precipOpacity=e.target.value/100;
+  if(precipLayer) precipLayer.setOpacity(precipOpacity);
 });
-function setRadarVisible(on){
-  radarOn=on;
-  document.getElementById('radarbar').style.display = on && radarFrames.length ? 'flex':'none';
-  if(on){ radarFrames.forEach(f=>{ if(radarLayers[f.time] && !map.hasLayer(radarLayers[f.time])) radarLayers[f.time].addTo(map); }); showRadarFrame(radarIdx); if(radarPlaying) playRadar(); }
-  else { pauseRadar(); Object.values(radarLayers).forEach(l=>l.setOpacity(0)); }
-}
+function setRadarVisible(on){ precipOn=on; if(on) buildPrecip(); else if(precipLayer){ map.removeLayer(precipLayer); precipLayer=null; } updatePrecipStamp(); }
+/* refresh-cycle entry point (keeps the name the rest of the code calls) */
+function loadRadarFrames(){ if(precipOn) buildPrecip(); else updatePrecipStamp(); }
 
 /* ====================================================================
    OPENWEATHER MAP OVERLAYS (optional, needs a free key)
@@ -939,7 +896,7 @@ document.getElementById('refreshbtn').addEventListener('click', refreshAll);
 refreshAll();
 setInterval(loadAlerts, 120000);        /* NWS alerts — 2 min */
 setInterval(loadGauges, 600000);        /* USGS — 10 min */
-setInterval(loadRadarFrames, 180000);   /* radar — 3 min (new frame appears) */
+setInterval(loadRadarFrames, 600000);   /* precipitation — 10 min (OWM update cadence) */
 setInterval(() => { if(!document.hidden){ loadReports(); loadChat(); } }, 45000);
 
 /* auto-locate on load — fires the native GPS prompt as a top-level page; manual fallback in the iframe */
