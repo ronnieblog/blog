@@ -86,6 +86,30 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
 .nearrow .ne{font-size:12px;color:var(--dim)}
 .tag{display:inline-block;font-family:var(--mono);font-size:10px;padding:2px 6px;border-radius:2px;margin:0 4px 5px 0;letter-spacing:.04em}
 
+/* at-a-glance card */
+#glance{border-bottom:1px solid var(--line)}
+.glance{padding:14px}
+.glance.ok{background:linear-gradient(180deg,rgba(83,177,127,.10),transparent)}
+.glance.warn{background:linear-gradient(180deg,rgba(242,163,60,.15),transparent)}
+.glance.sev{background:linear-gradient(180deg,rgba(224,82,74,.18),transparent)}
+.g-status{font-family:var(--display);font-weight:700;font-size:23px;line-height:1.12;letter-spacing:.01em;display:flex;align-items:flex-start;gap:9px}
+.glance.ok .g-status{color:var(--green)}.glance.warn .g-status{color:var(--amber)}.glance.sev .g-status{color:var(--red)}
+.g-icon{font-size:20px;flex:none;line-height:1.2}
+.g-fc{font-size:13px;color:var(--text);margin-top:8px;line-height:1.45}
+.g-action{margin-top:11px;background:var(--panel2);border:1px solid var(--line);border-radius:5px;padding:10px 11px}
+.g-action-h{font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim);margin-bottom:6px}
+.g-action>div:not(.g-links){font-size:12.5px;line-height:1.5;color:var(--text)}
+.g-links{display:flex;gap:16px;flex-wrap:wrap;margin-top:9px;padding-top:8px;border-top:1px solid rgba(255,255,255,.06)}
+.g-links a{color:var(--cyan);font-size:12px;text-decoration:none;font-family:var(--mono)}.g-links a:hover{text-decoration:underline}
+.g-meta{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:10px;line-height:1.6}
+.g-disc{font-family:var(--mono);font-size:10px;color:var(--dim);margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.06);line-height:1.55}
+.g-disc b{color:var(--amber)}
+#me-search{display:flex;gap:6px;padding:0 14px 12px;border-bottom:1px solid var(--line)}
+#me-search input{flex:1;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:3px;padding:8px 10px;font-family:var(--body);font-size:13px}
+#me-search input:focus{outline:none;border-color:var(--amber)}
+#me-search button{background:var(--panel2);border:1px solid var(--line);color:var(--dim);border-radius:3px;padding:0 15px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+#me-search button:hover{color:var(--text);border-color:var(--dim)}
+
 /* hero */
 #cc-hero{padding:14px;border-bottom:1px solid var(--line)}
 .hero{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
@@ -140,6 +164,10 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
 .gnum.flood{color:var(--red)}
 .note{padding:12px 14px;color:var(--dim);font-size:12px;line-height:1.5}
 .note a{color:var(--cyan);text-decoration:none}.note a:hover{text-decoration:underline}
+.srcrow{display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13px}
+.dot-live{width:8px;height:8px;border-radius:50%;background:var(--green);flex:none;box-shadow:0 0 6px var(--green)}
+.srclink{display:block;color:var(--cyan);text-decoration:none;font-size:13px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.srclink:last-child{border-bottom:none}.srclink:hover{color:var(--text)}
 
 /* on-map control + legend */
 .mapctl{background:rgba(14,24,34,.95);border:1px solid var(--line);border-radius:7px;padding:9px 10px;width:165px;box-shadow:0 6px 20px rgba(0,0,0,.55);backdrop-filter:blur(5px);font-family:var(--body)}
@@ -233,6 +261,7 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
     <nav>
       <button data-pane="now" class="on">Now</button>
       <button data-pane="rivers">Rivers</button>
+      <button data-pane="sources">Sources</button>
       <button data-pane="feed">Feed</button>
     </nav>
 
@@ -242,6 +271,8 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
         <div class="locstate"><div class="where">Locating…</div><div class="sub">Asking your browser for location</div></div>
         <div class="locbtns"><button class="minibtn amber" id="me-enable">Use my location</button></div>
       </div>
+      <div id="me-search"><input id="geoq" placeholder="No GPS? Enter ZIP or neighborhood" autocomplete="off"><button id="geogo">Go</button></div>
+      <div id="glance"></div>
       <div id="me-impact"></div>
       <div id="me-alerts" class="sec"></div>
       <div id="cc-hero"></div>
@@ -253,6 +284,47 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
 
     <!-- RIVERS -->
     <div class="pane" id="pane-rivers"><div class="empty">Loading river gauges…</div></div>
+
+    <!-- SOURCES -->
+    <div class="pane" id="pane-sources">
+      <div class="grp">
+        <h3>Live on the map</h3>
+        <div class="srcrow"><span class="dot-live"></span>Radar — NWS NEXRAD (Iowa Mesonet)</div>
+        <div class="srcrow"><span class="dot-live"></span>Warnings &amp; watches — NWS</div>
+        <div class="srcrow"><span class="dot-live"></span>River &amp; flood gauges — USGS</div>
+        <div class="srcrow"><span class="dot-live"></span>Community reports</div>
+        <div class="note" style="padding:7px 0 0">Toggle each in the layer panel on the map. Storm motion (where it's headed) shows in the warning detail under Now.</div>
+      </div>
+      <div class="grp">
+        <h3>Power &amp; utilities</h3>
+        <div class="note" style="padding:0 0 7px">Dominion publishes no open real-time outage API, so this opens in its own window. Community "power outage" reports fill the gap on the map.</div>
+        <a class="srclink" href="https://outagemap.dominionenergy.com" target="_blank" rel="noopener">→ Dominion Energy outage map</a>
+      </div>
+      <div class="grp">
+        <h3>Roads &amp; traffic</h3>
+        <div class="note" style="padding:0 0 7px">Closures, incidents, flooded roads, and live traffic cameras.</div>
+        <a class="srclink" href="https://511.vdot.virginia.gov" target="_blank" rel="noopener">→ VDOT 511 — closures, incidents &amp; cameras</a>
+      </div>
+      <div class="grp">
+        <h3>Emergency information</h3>
+        <a class="srclink" href="https://www.vaemergency.gov" target="_blank" rel="noopener">→ Virginia Dept. of Emergency Management</a>
+        <a class="srclink" href="https://www.rva.gov/emergency-management" target="_blank" rel="noopener">→ Richmond Office of Emergency Management</a>
+        <a class="srclink" href="https://henrico.gov/services/emergency-management/" target="_blank" rel="noopener">→ Henrico Emergency Management</a>
+        <a class="srclink" href="https://www.chesterfield.gov/389/Emergency-Management" target="_blank" rel="noopener">→ Chesterfield Emergency Management</a>
+        <a class="srclink" href="https://www.weather.gov/akq/" target="_blank" rel="noopener">→ NWS Wakefield (AKQ) forecast office</a>
+      </div>
+      <div class="grp">
+        <h3>On the roadmap</h3>
+        <div class="note" style="padding:0">
+          <b style="color:var(--text)">Hurricane / tropical tracks</b> — addable from NHC's keyless feed (tropical season).<br>
+          <b style="color:var(--text)">Satellite &amp; cloud cover</b> — addable from NOAA GOES (keyless).<br>
+          <b style="color:var(--text)">Animated wind field</b> — addable from Open-Meteo (keyless, particle layer).<br>
+          <b style="color:var(--text)">Lightning strikes</b> — no free real-time public feed exists; can't be added honestly.<br>
+          <b style="color:var(--text)">Wind / temp map overlays</b> — paid tile key only; shown as live numbers for your location under Now instead.
+        </div>
+      </div>
+      <div class="note">Per the project's rule, RVA SITREP only shows information that is legitimately, publicly accessible — nothing fabricated.</div>
+    </div>
 
     <!-- FEED -->
     <div class="pane" id="pane-feed">
@@ -353,11 +425,13 @@ function stormMotion(props){ const p=props.parameters||{},arr=p.eventMotionDescr
    ==================================================================== */
 const RADAR_URL='https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
 let radarLayer=null, radarOn=true;
+let lastInside=[], lastNearby=[], lastFc=null, lastRadar=0, lastAlerts=0;
 function buildRadar(){
   radarLayer=L.tileLayer(RADAR_URL,{opacity:0.72,zIndex:250,maxZoom:18,attribution:'Radar: NWS / Iowa Environmental Mesonet'});
   if(radarOn) radarLayer.addTo(map);
+  lastRadar=Date.now();
 }
-function refreshRadar(){ if(radarLayer && radarOn) radarLayer.setUrl(RADAR_URL+'?_='+Date.now()); }
+function refreshRadar(){ if(radarLayer && radarOn){ radarLayer.setUrl(RADAR_URL+'?_='+Date.now()); lastRadar=Date.now(); if(typeof renderGlance==='function') renderGlance(); } }
 function setRadar(on){ radarOn=on; if(!radarLayer){ buildRadar(); return; } on?radarLayer.addTo(map):map.removeLayer(radarLayer); }
 buildRadar();
 
@@ -434,8 +508,9 @@ async function loadAlerts(){
     const warnings=feats.filter(f=>/Warning/.test(f.properties.event));
     document.getElementById('alertbadge').textContent='ALERTS: '+feats.length;
     document.getElementById('alertbadge').className='alertbadge'+(warnings.length?' hot':'');
-    computeImpact();
+    lastAlerts=Date.now(); computeImpact();
     if(!userLoc) regionalStrip(feats);
+    renderGlance();
   }catch(e){ document.getElementById('me-alerts').innerHTML=''; if(!userLoc) document.getElementById('striptxt').textContent='NWS FEED UNREACHABLE — RETRYING'; }
 }
 function regionalStrip(feats){ const strip=document.getElementById('strip'),txt=document.getElementById('striptxt'); const severe=feats.filter(f=>SEVERE_RE.test(f.properties.event)); strip.className=severe.length?'severe':feats.length?'warn':''; txt.textContent=feats.length?`${feats.length} ACTIVE ALERT${feats.length>1?'S':''} — `+[...new Set(feats.map(f=>f.properties.event.toUpperCase()))].slice(0,3).join(' · '):'NO ACTIVE ALERTS FOR THE RICHMOND REGION — MONITORING'; }
@@ -483,12 +558,76 @@ document.getElementById('locatebtn').addEventListener('click',startWatch);
 document.getElementById('me-enable').addEventListener('click',startWatch);
 
 function sevRank(f){ const e=f.properties.event; if(/Tornado Warning/.test(e))return 5; if(SEVERE_RE.test(e))return 4; if(/Warning/.test(e))return 3; if(/Watch/.test(e))return 2; return 1; }
+/* ---------- AT-A-GLANCE: "am I safe, what do I do?" ---------- */
+const hhmm=t=>t?new Date(t).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'}):'—';
+function plainStatus(inside,nearby){
+  if(!userLoc) return {txt:'Set your location to see what\u2019s affecting you right now',cls:'',icon:'📍'};
+  if(inside.length){ const e=inside[0].f.properties.event,isW=/Warning/.test(e); return {txt:`${e} ${isW?'for your location right now':'in effect for your area'}`,cls:isW?'sev':'warn',icon:isW?'⚠️':'👀'}; }
+  if(nearby.length&&nearby[0].mi<40){ const r=nearby[0],e=r.f.properties.event; return {txt:`${e} ${r.mi<1?'less than 1':Math.round(r.mi)} mi to your ${compass(r.bearing)} — not on you yet`,cls:/Warning/.test(e)?'warn':'',icon:'👀'}; }
+  return {txt:'No active warning at your location',cls:'ok',icon:'✓'};
+}
+const ACTIONS={
+  'Tornado Warning':['Get to an interior room on the lowest floor, away from windows — now.','Do not wait to see it.'],
+  'Severe Thunderstorm Warning':['Stay indoors and away from windows.','Charge devices in case power goes out.'],
+  'Flash Flood Warning':['Avoid low-water crossings — turn around, don\u2019t drown.','Move to higher ground if water is rising.'],
+  'Flood Warning':['Stay away from flooded roads and streams.','Never drive through standing water.'],
+  'Flood Watch':['Be ready for flooding — watch low-lying roads.','Have a way to reach higher ground.'],
+  'Hurricane Warning':['Follow local evacuation orders.','Charge devices and gather supplies now.'],
+  'Tropical Storm Warning':['Secure loose outdoor items.','Charge devices — outages are likely.'],
+  'Winter Storm Warning':['Avoid travel if you can.','Prepare for outages: charge devices, keep warm.'],
+  'Ice Storm Warning':['Avoid travel — roads and walkways will be dangerous.','Prepare for extended outages.'],
+  'High Wind Warning':['Secure loose outdoor objects.','Downed lines and outages are possible.'],
+  'Wind Advisory':['Secure light outdoor items.','Use caution in high-profile vehicles.']
+};
+function actionGuidance(inside,nearby,fc){
+  if(!userLoc) return ['Allow location above, or type a ZIP / neighborhood, for guidance specific to your spot.'];
+  if(inside.length){ const e=inside[0].f.properties.event; return ACTIONS[e]||['Monitor the warning and follow NWS instructions.']; }
+  if(nearby.length&&nearby[0].mi<40) return ['Keep an eye on the sky and stay near shelter.','Charge devices in case it moves your way.'];
+  if(fc&&fc.stormsLater) return ['No action needed right now.','Storms possible later — keep devices charged.'];
+  return ['No action needed — conditions are calm near you.'];
+}
+function forecastSummary(h,si){
+  if(!h||!h.time) return null;
+  const probs=h.precipitation_probability||[],codes=h.weather_code||[],times=h.time;
+  let firstRain=-1,peakI=-1,peakP=0,storm=false;
+  for(let i=si;i<Math.min(si+18,times.length);i++){ const p=probs[i]||0; if(firstRain<0&&p>=50)firstRain=i; if(p>peakP){peakP=p;peakI=i;} if((codes[i]||0)>=95)storm=true; }
+  const fmt=i=>new Date(times[i]).toLocaleTimeString('en-US',{hour:'numeric'}).replace(' ','');
+  if(peakP<30) return {text:'Forecast: dry through the next several hours. (Open-Meteo)',stormsLater:false};
+  let s=storm?'storms possible':'rain likely';
+  if(firstRain>=0&&firstRain!==si) s+=` after ${fmt(firstRain)}`; else s+=' soon';
+  if(peakI>=0&&peakI!==firstRain) s+=`, chance peaks around ${fmt(peakI)}`;
+  return {text:`Forecast: ${s} (${peakP}% max chance). (Open-Meteo)`,stormsLater:true};
+}
+function renderGlance(){
+  const el=document.getElementById('glance'); if(!el) return;
+  const st=plainStatus(lastInside,lastNearby), acts=actionGuidance(lastInside,lastNearby,lastFc);
+  el.innerHTML=`<div class="glance ${st.cls}">
+    <div class="g-status"><span class="g-icon">${st.icon}</span><span>${esc(st.txt)}</span></div>
+    ${lastFc?`<div class="g-fc">${esc(lastFc.text)}</div>`:''}
+    <div class="g-action"><div class="g-action-h">What to do — safety guidance from NWS</div>${acts.map(a=>`<div>• ${esc(a)}</div>`).join('')}<div class="g-links"><a href="https://outagemap.dominionenergy.com" target="_blank" rel="noopener">Dominion outages →</a><a href="https://511.vdot.virginia.gov" target="_blank" rel="noopener">VDOT 511 roads →</a></div></div>
+    <div class="g-meta">Sources: NWS alerts · NOAA/NWS radar · USGS gauges · Open-Meteo forecast${(lastRadar||lastAlerts)?` &nbsp;·&nbsp; radar ${hhmm(lastRadar)} · alerts ${hhmm(lastAlerts)}`:''}</div>
+    <div class="g-disc"><b>For emergencies call 911.</b> Informational only — not official guidance. Always follow NWS and local emergency instructions.</div>
+  </div>`;
+}
+async function geoSearch(q){
+  q=(q||'').trim(); if(!q) return; const inp=document.getElementById('geoq');
+  try{
+    let lat,lon,label;
+    if(/^\d{5}$/.test(q)){ const z=await (await fetch('https://api.zippopotam.us/us/'+q)).json(); const p=z.places[0]; lat=+p.latitude; lon=+p.longitude; label=`${p['place name']}, ${p['state abbreviation']}`; }
+    else { const g=await (await fetch('https://geocoding-api.open-meteo.com/v1/search?count=1&language=en&name='+encodeURIComponent(q))).json(); const r=g.results&&g.results[0]; if(!r) throw 0; lat=r.latitude; lon=r.longitude; label=`${r.name}${r.admin1?', '+r.admin1:''}`; }
+    if(inp) inp.value=''; followMode=false; labelCache[lat.toFixed(2)+','+lon.toFixed(2)]=label;
+    setUserLoc(lat,lon,0,{manual:true,center:true});
+    const w=document.getElementById('me-where'); if(w) w.textContent=label;
+  }catch(e){ if(inp){ inp.value=''; inp.placeholder='Not found — try a ZIP or city name'; } }
+}
+
 function computeImpact(){
   if(!userLoc) return;
   const inside=[],nearby=[];
   activeAlerts.forEach(f=>{ if(!f.geometry)return; const rings=ringsFromGeometry(f.geometry); if(!rings.length)return; const isIn=rings.some(r=>pointInRing(userLoc.lon,userLoc.lat,r)); const near=isIn?{mi:0}:nearestOnRings(userLoc.lat,userLoc.lon,rings); const bearing=isIn?null:bearingDeg(userLoc.lat,userLoc.lon,near.aLat,near.aLon); (isIn?inside:nearby).push({f,isIn,mi:near.mi,bearing,tags:warnTags(f.properties),motion:stormMotion(f.properties)}); });
   inside.sort((a,b)=>sevRank(b.f)-sevRank(a.f)); nearby.sort((a,b)=>a.mi-b.mi);
-  renderImpact(inside,nearby); updateStripImpact(inside,nearby); renderLocControls(null);
+  lastInside=inside; lastNearby=nearby;
+  renderImpact(inside,nearby); updateStripImpact(inside,nearby); renderLocControls(null); renderGlance();
 }
 function renderLocControls(failKind){
   const el=document.getElementById('me-loc');
@@ -559,6 +698,7 @@ async function loadConditions(lat,lon){
     const c=d.current||{},h=d.hourly||{},dy=d.daily||{};
     const nowH=new Date(); nowH.setMinutes(0,0,0);
     let si=(h.time||[]).findIndex(t=>new Date(t)>=nowH); if(si<0)si=0;
+    lastFc=forecastSummary(h,si); renderGlance();
     const dew=h.dew_point_2m?.[si],uv=h.uv_index?.[si],vis=h.visibility?.[si]; window.__lastUV=uv;
     const [condTxt,condIcon]=wmo(c.weather_code,c.is_day);
     const hi=dy.temperature_2m_max?.[0],lo=dy.temperature_2m_min?.[0];
@@ -629,7 +769,9 @@ setInterval(loadAlerts,120000);
 setInterval(loadGauges,600000);
 setInterval(refreshRadar,300000);
 setInterval(()=>{ if(!document.hidden){ loadReports(); loadChat(); } },45000);
+document.getElementById('geogo').addEventListener('click',()=>geoSearch(document.getElementById('geoq').value));
+document.getElementById('geoq').addEventListener('keydown',e=>{ if(e.key==='Enter') geoSearch(document.getElementById('geoq').value); });
+renderGlance();
 startWatch();
-</script>
 </body>
 </html>
