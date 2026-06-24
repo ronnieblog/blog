@@ -306,7 +306,7 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
         <div class="srcrow"><span class="dot-live"></span>Weather FX — animated rain/lightning tied to current conditions</div>
         <div class="srcrow"><span class="dot-live"></span>Clouds (satellite) — GOES-East GeoColor via NASA GIBS, animated</div>
         <div class="srcrow"><span class="dot-off"></span>Lightning strikes — shown via storm conditions only; live strike networks are all paid/keyed</div>
-        <div class="note" style="padding:7px 0 0">Toggle layers in the panel on the map. Satellite clouds run ~40 min behind real time (NASA latency), so they animate on their own recent loop rather than locking to the radar frame. "Weather FX" is a visual effect driven by Open-Meteo current conditions — not lightning detection.</div>
+        <div class="note" style="padding:7px 0 0">Toggle layers in the panel on the map. Satellite clouds are near-real-time GOES-East imagery (a satellite "view from space" with radar drawn on top) and animate on their own recent loop. "Weather FX" is a visual effect driven by Open-Meteo current conditions — not lightning detection.</div>
       </div>
       <div class="grp">
         <h3>Power &amp; outages</h3>
@@ -475,27 +475,29 @@ function applyRadar(){
 }
 function setRadarOpacity(v){ radarOpacity=v; if(rvLayers.length) showFrame(rvIdx); if(iemLayer) iemLayer.setOpacity(v); }
 function setupRadarBar(){ const scrub=document.getElementById('radarscrub'); scrub.min=0; scrub.max=Math.max(1,rvLayers.length-1); scrub.value=rvIdx; }
-async function refreshRadar(){ if(cloudsActive&&cloudsLayer){ buildCloudTimes(); cloudIdx=cloudTimes.length-1; cloudsLayer.setParams({time:cloudTimes[cloudIdx]},false); } if(iemLayer&&iemShown){ iemLayer.setUrl(IEM_URL+'?_='+Date.now()); radarUpdated=Date.now(); renderGlance(); } if(radarMode==='animated'){ rvLayers.forEach(l=>map.removeLayer(l)); if(radarTimer){clearInterval(radarTimer);clearTimeout(radarTimer);} await initRadar(); } else { radarUpdated=Date.now(); renderGlance(); } }
+async function refreshRadar(){ if(cloudsActive){ buildCloudLayers(); cloudLayers.forEach(l=>l.addTo(map)); showCloudFrame(cloudIdx); } if(iemLayer&&iemShown){ iemLayer.setUrl(IEM_URL+'?_='+Date.now()); radarUpdated=Date.now(); renderGlance(); } if(radarMode==='animated'){ rvLayers.forEach(l=>map.removeLayer(l)); if(radarTimer){clearInterval(radarTimer);clearTimeout(radarTimer);} await initRadar(); } else { radarUpdated=Date.now(); renderGlance(); } }
 document.getElementById('radarplay').addEventListener('click',()=>{ radarPlaying=!radarPlaying; radarPlaying?playRadar():pauseRadar(); if(cloudsActive){ radarPlaying?playClouds():stopClouds(); } });
 document.getElementById('radarscrub').addEventListener('input',e=>{ radarPlaying=false; pauseRadar(); showFrame(+e.target.value); });
 document.getElementById('radarspeed').addEventListener('click',e=>{ radarSpeed=radarSpeed===600?350:radarSpeed===350?900:600; e.target.textContent=radarSpeed===350?'2×':radarSpeed===600?'1×':'½×'; if(radarPlaying)playRadar(); });
 
 /* ===================== CLOUDS (NASA GIBS GOES-East GeoColor — keyless, tiled, time-stepped) =====================
-   GeoColor = true-color by day, IR clouds at night. NASA near-real-time runs ~40min behind, so it can't
-   frame-lock to the live radar; it animates on its own recent loop, started/stopped with the radar play button. */
-let cloudsLayer=null,cloudTimes=[],cloudIdx=0,cloudTimer=null,cloudsActive=false;
+   Frames are PRELOADED as separate layers and cross-faded by opacity (same trick as the radar), so they
+   animate smoothly instead of strobing. GeoColor = true-color by day, IR clouds at night. */
+const GIBS_WMS='https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?';
+let cloudLayers=[],cloudTimes=[],cloudIdx=0,cloudTimer=null,cloudsActive=false;
 function buildCloudTimes(){ cloudTimes=[]; const step=600000,latency=3600000,n=10; const base=Math.floor((Date.now()-latency)/step)*step; for(let i=n-1;i>=0;i--){ cloudTimes.push(new Date(base-i*step).toISOString().replace(/\.\d{3}Z$/,'Z')); } }
-function playClouds(){ if(cloudTimer)clearInterval(cloudTimer); cloudTimer=setInterval(()=>{ if(!cloudsActive||!cloudsLayer)return; cloudIdx=(cloudIdx+1)%cloudTimes.length; cloudsLayer.setParams({time:cloudTimes[cloudIdx]},false); },Math.max(750,radarSpeed)); }
+function buildCloudLayers(){ cloudLayers.forEach(l=>map.removeLayer(l)); buildCloudTimes(); cloudLayers=cloudTimes.map(ts=>L.tileLayer.wms(GIBS_WMS,{layers:'GOES-East_ABI_GeoColor',format:'image/jpeg',transparent:false,opacity:0,zIndex:230,maxZoom:19,crossOrigin:true,time:ts,attribution:'Clouds: NASA GIBS / NOAA GOES-East'})); cloudIdx=cloudLayers.length-1; }
+function showCloudFrame(i){ if(!cloudLayers.length)return; cloudIdx=(i+cloudLayers.length)%cloudLayers.length; cloudLayers.forEach((l,k)=>l.setOpacity(k===cloudIdx&&cloudsActive?0.82:0)); }
+function playClouds(){ if(cloudTimer)clearInterval(cloudTimer); cloudTimer=setInterval(()=>showCloudFrame(cloudIdx+1),Math.max(750,radarSpeed)); }
 function stopClouds(){ if(cloudTimer){clearInterval(cloudTimer);cloudTimer=null;} }
 function setClouds(on){
   cloudsActive=on;
   if(on){
-    buildCloudTimes(); cloudIdx=cloudTimes.length-1;
-    if(!cloudsLayer) cloudsLayer=L.tileLayer.wms('https://gibs.earthdata.nasa.gov/wms/epsg3857/best/wms.cgi?',{layers:'GOES-East_ABI_GeoColor',format:'image/png',transparent:false,opacity:0.8,zIndex:230,maxZoom:19,crossOrigin:true,attribution:'Clouds: NASA GIBS / NOAA GOES-East'});
-    cloudsLayer.setParams({time:cloudTimes[cloudIdx]},true);
-    if(!map.hasLayer(cloudsLayer)) cloudsLayer.addTo(map);
+    if(!cloudLayers.length) buildCloudLayers();
+    cloudLayers.forEach(l=>map.hasLayer(l)||l.addTo(map));
+    showCloudFrame(cloudIdx);
     if(radarPlaying) playClouds();
-  } else { stopClouds(); if(cloudsLayer&&map.hasLayer(cloudsLayer)) map.removeLayer(cloudsLayer); }
+  } else { stopClouds(); cloudLayers.forEach(l=>{ l.setOpacity(0); map.removeLayer(l); }); }
 }
 /* ===================== WIND FIELD (GFS via Open-Meteo) — subtle ===================== */
 let velLayer=null,windOn=false,windLoading=false;
@@ -592,7 +594,7 @@ function renderGlance(){
   const facts=[]; if(lastCond) facts.push(`${lastCond.temp}° ${lastCond.cond}`); if(forecastSummary) facts.push(forecastSummary);
   g.className=cls;
   g.innerHTML=`<div class="gl-main"><span class="gl-dot"></span><div><div class="gl-line">${esc(status)}</div><div class="gl-sub">${esc(action)}</div></div></div>
-    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R13</div></div>`;
+    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R14</div></div>`;
   syncGlanceHeight();
 }
 
