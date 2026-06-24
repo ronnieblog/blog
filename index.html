@@ -425,7 +425,8 @@ function stampLine(){ return `Radar ${fmtClock(radarUpdated)} · Alerts ${fmtClo
 /* ===================== ANIMATED RADAR (RainViewer + fallback) ===================== */
 const RV_API='https://api.rainviewer.com/public/weather-maps.json';
 const RV_COLOR=4;
-const RV_MAXNATIVE=10;   /* RainViewer tiles stop here; Leaflet upscales beyond so radar always shows when zoomed in */
+const RV_MAXNATIVE=8;    /* radar sources have data only to ~this zoom; cap so Leaflet upscales instead of requesting the "Zoom Level Not Supported" placeholder */
+const BLANK_TILE='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const IEM_URL='https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
 let rvHost='',rvFrames=[],rvLayers=[],rvIdx=0,rvNowIdx=0;
 let radarMode='loading',radarVisible=true,radarOpacity=0.72,radarSpeed=600,radarTimer=null,radarPlaying=true;
@@ -439,14 +440,14 @@ async function initRadar(){
     rvFrames=past.concat(now);
     if(!rvHost||!rvFrames.length) throw new Error('no frames');
     rvNowIdx=Math.max(0,past.length-1); rvIdx=rvNowIdx; radarMode='animated';
-    rvLayers=rvFrames.map(f=>L.tileLayer(rvTile(f.path),{opacity:0,zIndex:250,maxZoom:19,maxNativeZoom:RV_MAXNATIVE,attribution:'Radar © RainViewer · NWS'}));
+    rvLayers=rvFrames.map(f=>L.tileLayer(rvTile(f.path),{opacity:0,zIndex:250,maxZoom:19,maxNativeZoom:RV_MAXNATIVE,errorTileUrl:BLANK_TILE,attribution:'Radar © RainViewer · NWS'}));
     if(radarVisible) rvLayers.forEach(l=>l.addTo(map));
     radarUpdated=rvFrames[rvNowIdx].time*1000;
     setupRadarBar(); showFrame(rvIdx); if(radarPlaying) playRadar();
     renderGlance();
   }catch(e){ radarMode='static'; useIEM(); document.getElementById('radarbar').classList.add('hidden'); }
 }
-function useIEM(){ if(!iemLayer) iemLayer=L.tileLayer(IEM_URL,{opacity:radarOpacity,zIndex:250,maxZoom:19,maxNativeZoom:12,attribution:'Radar: NWS / Iowa Mesonet'}); if(radarVisible) iemLayer.addTo(map); radarUpdated=Date.now(); renderGlance(); }
+function useIEM(){ if(!iemLayer) iemLayer=L.tileLayer(IEM_URL,{opacity:radarOpacity,zIndex:250,maxZoom:19,maxNativeZoom:RV_MAXNATIVE,errorTileUrl:BLANK_TILE,attribution:'Radar: NWS / Iowa Mesonet'}); if(radarVisible) iemLayer.addTo(map); radarUpdated=Date.now(); renderGlance(); }
 function showFrame(i){ if(radarMode!=='animated'||!rvLayers.length)return; rvIdx=(i+rvLayers.length)%rvLayers.length; rvLayers.forEach((l,k)=>l.setOpacity(k===rvIdx&&radarVisible?radarOpacity:0)); const scrub=document.getElementById('radarscrub'),lab=document.getElementById('radartime'); if(scrub)scrub.value=rvIdx; if(lab)lab.textContent=frameLabel(rvFrames[rvIdx]); }
 function playRadar(){ if(radarTimer)clearInterval(radarTimer); radarTimer=setInterval(()=>{ showFrame(rvIdx+1); if(rvIdx===rvNowIdx){ clearInterval(radarTimer); radarTimer=setTimeout(()=>{ if(radarPlaying)playRadar(); },900); } },radarSpeed); const b=document.getElementById('radarplay'); if(b)b.textContent='❚❚'; }
 function pauseRadar(){ if(radarTimer){clearInterval(radarTimer);clearTimeout(radarTimer);radarTimer=null;} const b=document.getElementById('radarplay'); if(b)b.textContent='►'; }
