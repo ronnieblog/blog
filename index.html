@@ -480,6 +480,14 @@ document.getElementById('radarplay').addEventListener('click',()=>{ radarPlaying
 document.getElementById('radarscrub').addEventListener('input',e=>{ radarPlaying=false; pauseRadar(); showFrame(+e.target.value); });
 document.getElementById('radarspeed').addEventListener('click',e=>{ radarSpeed=radarSpeed===600?350:radarSpeed===350?900:600; e.target.textContent=radarSpeed===350?'2×':radarSpeed===600?'1×':'½×'; if(radarPlaying)playRadar(); });
 
+/* ===================== CLOUDS (GOES-East infrared via Iowa Mesonet, keyless) ===================== */
+let cloudsLayer=null;
+function setClouds(on){
+  if(on){
+    if(!cloudsLayer) cloudsLayer=L.tileLayer.wms('https://mesonet.agron.iastate.edu/cgi-bin/wms/goes_east.cgi?',{layers:'conus_ch13',format:'image/png',transparent:true,opacity:0.5,zIndex:240,attribution:'Satellite: NOAA GOES-East / Iowa Mesonet'});
+    cloudsLayer.addTo(map);
+  } else if(cloudsLayer){ map.removeLayer(cloudsLayer); }
+}
 /* ===================== WIND FIELD (GFS via Open-Meteo) — subtle ===================== */
 let velLayer=null,windOn=false,windLoading=false;
 async function setWind(on){
@@ -511,6 +519,7 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
   div.innerHTML=`<div class="mapctl-head" id="mapctl-head"><span class="mapctl-title">≡ Map layers</span><span class="mapctl-caret">▾</span></div>
     <div class="mapctl-body">
     <button class="chip on" data-l="radar">Radar (animated)</button>
+    <button class="chip" data-l="clouds">Clouds (satellite IR)</button>
     <button class="chip" data-l="wind">Wind field</button>
     <button class="chip" data-l="gauges">River gauges</button>
     <button class="chip on" data-l="reports">Reports</button>
@@ -528,6 +537,7 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
   div.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.l,on=b.classList.toggle('on');
     if(k==='radar') applyRadar();
     else if(k==='wind') setWind(on);
+    else if(k==='clouds') setClouds(on);
     else (on?map.addLayer(layers[k]):map.removeLayer(layers[k]));
   }));
   div.querySelector('#opac').addEventListener('input',e=>setRadarOpacity(+e.target.value/100));
@@ -573,7 +583,7 @@ function renderGlance(){
   const facts=[]; if(lastCond) facts.push(`${lastCond.temp}° ${lastCond.cond}`); if(forecastSummary) facts.push(forecastSummary);
   g.className=cls;
   g.innerHTML=`<div class="gl-main"><span class="gl-dot"></span><div><div class="gl-line">${esc(status)}</div><div class="gl-sub">${esc(action)}</div></div></div>
-    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R11</div></div>`;
+    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R12</div></div>`;
   syncGlanceHeight();
 }
 
