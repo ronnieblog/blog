@@ -405,7 +405,7 @@ baseStandard.addTo(map);
 let curBase='standard';
 function setBase(which){ if(which===curBase)return; (which==='sat'?baseSat:baseStandard).addTo(map); map.removeLayer(which==='sat'?baseStandard:baseSat); curBase=which; }
 const layers={alerts:L.layerGroup(),gauges:L.layerGroup(),reports:L.layerGroup()};
-Object.values(layers).forEach(l=>l.addTo(map));
+layers.alerts.addTo(map); layers.reports.addTo(map);  /* warnings always on; gauges off by default */
 
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const ago=t=>{const m=Math.round((Date.now()-t)/60000);return m<1?'just now':m<60?m+' min ago':Math.round(m/60)+' hr ago';};
@@ -490,7 +490,7 @@ async function setWind(on){
   const chip=document.querySelector('.chip[data-l=wind]'); if(chip)chip.classList.add('busy');
   try{
     if(typeof L.velocityLayer!=='function') throw new Error('velocity lib unavailable');
-    const la1=38.7,la2=36.5,lo1=-79.0,lo2=-76.2,nx=14,ny=11;
+    const la1=40.5,la2=34.7,lo1=-82.5,lo2=-74.5,nx=18,ny=13;
     const lats=[],lons=[];
     for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){ lats.push((la1+(la2-la1)*j/(ny-1)).toFixed(3)); lons.push((lo1+(lo2-lo1)*i/(nx-1)).toFixed(3)); }
     const url=`https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms`;
@@ -512,10 +512,8 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
     <div class="mapctl-body">
     <button class="chip on" data-l="radar">Radar (animated)</button>
     <button class="chip" data-l="wind">Wind field</button>
-    <button class="chip on" data-l="alerts">Warnings (shaded)</button>
-    <button class="chip on" data-l="gauges">River gauges</button>
+    <button class="chip" data-l="gauges">River gauges</button>
     <button class="chip on" data-l="reports">Reports</button>
-    <button class="chip on" data-l="fx">Weather FX</button>
     <div class="mapctl-h mt">Radar opacity</div>
     <div class="optrow"><label>Fade</label><input type="range" id="opac" min="20" max="100" value="72"></div>
     <div class="mapctl-h mt">Basemap</div>
@@ -530,7 +528,6 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
   div.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.l,on=b.classList.toggle('on');
     if(k==='radar') applyRadar();
     else if(k==='wind') setWind(on);
-    else if(k==='fx'){ fxOn=on; updateFX(); }
     else (on?map.addLayer(layers[k]):map.removeLayer(layers[k]));
   }));
   div.querySelector('#opac').addEventListener('input',e=>setRadarOpacity(+e.target.value/100));
@@ -576,7 +573,7 @@ function renderGlance(){
   const facts=[]; if(lastCond) facts.push(`${lastCond.temp}° ${lastCond.cond}`); if(forecastSummary) facts.push(forecastSummary);
   g.className=cls;
   g.innerHTML=`<div class="gl-main"><span class="gl-dot"></span><div><div class="gl-line">${esc(status)}</div><div class="gl-sub">${esc(action)}</div></div></div>
-    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R10</div></div>`;
+    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R11</div></div>`;
   syncGlanceHeight();
 }
 
@@ -625,9 +622,10 @@ const inIframe=(()=>{ try{return window.self!==window.top;}catch(e){return true;
 function youIcon(){ return L.divIcon({className:'',html:'<div class="youdot"></div>',iconSize:[18,18],iconAnchor:[9,9]}); }
 function setUserLoc(lat,lon,acc,opts={}){
   const moved=userLoc?haversineMi(userLoc.lat,userLoc.lon,lat,lon):Infinity;
-  userLoc={lat,lon,acc:acc||0,manual:opts.manual||false};
-  if(!userMarker){ userMarker=L.marker([lat,lon],{icon:youIcon(),zIndexOffset:1000}).addTo(map).bindPopup('You are here'); userAcc=L.circle([lat,lon],{radius:acc||0,color:'#56B8D0',weight:1,fillColor:'#56B8D0',fillOpacity:.06,interactive:false}).addTo(map); }
-  else { userMarker.setLatLng([lat,lon]); userAcc.setLatLng([lat,lon]).setRadius(acc||0); }
+  userLoc={lat,lon,acc:acc||0,manual:opts.manual||false,isDefault:opts.isDefault||false};
+  const popLabel=userLoc.isDefault?'Richmond area — default. Use your location for your exact spot.':'Location shown on map';
+  if(!userMarker){ userMarker=L.marker([lat,lon],{icon:youIcon(),zIndexOffset:1000}).addTo(map).bindPopup(popLabel); userAcc=L.circle([lat,lon],{radius:acc||0,color:'#56B8D0',weight:1,fillColor:'#56B8D0',fillOpacity:.06,interactive:false}).addTo(map); }
+  else { userMarker.setLatLng([lat,lon]).setPopupContent(popLabel); userAcc.setLatLng([lat,lon]).setRadius(acc||0); }
   if(opts.center) map.setView([lat,lon],8); else if(followMode&&moved>0.03) map.panTo([lat,lon]);
   computeImpact(); maybeLoadConditions(lat,lon);
   document.getElementById('locatebtn').classList.toggle('live',!opts.manual&&watchId!=null);
@@ -669,7 +667,10 @@ function computeImpact(){
 }
 function renderLocControls(failKind){
   const el=document.getElementById('me-loc');
-  if(userLoc){
+  if(userLoc&&userLoc.isDefault){
+    el.innerHTML=`<div class="locstate"><div class="where" id="me-where">Richmond area</div><div class="sub">Showing the default area · allow location or search for your exact spot</div></div><div class="locbtns"><button class="minibtn amber" id="me-enable3">Use my location</button></div>`;
+    document.getElementById('me-enable3').addEventListener('click',startWatch);
+  } else if(userLoc){
     const accTxt=userLoc.manual?'Set manually':(userLoc.acc?`±${Math.round(userLoc.acc)} m`:'GPS');
     el.innerHTML=`<div class="locstate"><div class="where" id="me-where">${userLoc.manual?'Selected location':'Tracking you'}</div><div class="sub">${accTxt} · ${userLoc.lat.toFixed(4)}, ${userLoc.lon.toFixed(4)}</div></div><div class="locbtns"><button class="minibtn ${followMode?'on':''}" id="me-follow">${followMode?'Follow on':'Follow off'}</button><button class="minibtn" id="me-recenter">Recenter</button></div>`;
     document.getElementById('me-follow').addEventListener('click',()=>{ followMode=!followMode; renderLocControls(null); if(followMode&&userLoc) map.setView([userLoc.lat,userLoc.lon],Math.max(map.getZoom(),11)); });
@@ -830,8 +831,10 @@ document.getElementById('chatinput').addEventListener('keydown',e=>{if(e.key==='
 function refreshAll(){ loadAlerts(); loadGauges(); refreshRadar(); loadReports(); loadChat(); }
 document.getElementById('refreshbtn').addEventListener('click',refreshAll);
 createRain();
-renderLocControls(null); renderGlance(); syncGlanceHeight();
+renderGlance(); syncGlanceHeight();
 initRadar(); loadAlerts(); loadGauges(); loadReports(); loadChat();
+/* show the Richmond area's weather immediately so the page is useful before/without GPS */
+setUserLoc(RVA[0],RVA[1],0,{isDefault:true});
 setInterval(loadAlerts,120000);
 setInterval(loadGauges,600000);
 setInterval(refreshRadar,300000);
