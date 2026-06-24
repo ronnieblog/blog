@@ -187,6 +187,9 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
 .legkey span{display:flex;align-items:center;gap:4px}.legkey i{width:11px;height:4px;border-radius:1px;flex:none;border:1px solid rgba(0,0,0,.6)}
 #radarbar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:700;display:flex;align-items:center;gap:10px;background:rgba(14,24,34,.95);border:1px solid var(--line);border-radius:24px;padding:7px 14px 7px 9px;box-shadow:0 6px 20px rgba(0,0,0,.55);backdrop-filter:blur(5px);max-width:min(440px,82vw)}
 #radarbar.hidden{display:none}
+#radarzoomhint{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:690;display:none;background:rgba(14,24,34,.92);border:1px solid var(--line);color:var(--dim);font-family:var(--mono);font-size:11px;padding:8px 15px;border-radius:20px;box-shadow:0 4px 14px rgba(0,0,0,.45)}
+#radarzoomhint.on{display:block}
+@media (max-width:860px){#radarzoomhint{bottom:auto;top:108px}}
 #radarplay{width:30px;height:30px;border-radius:50%;background:var(--amber);border:none;color:#1A1206;font-size:13px;flex:none;display:flex;align-items:center;justify-content:center}
 #radarscrub{flex:1;height:4px;-webkit-appearance:none;background:var(--line);border-radius:2px;outline:none;min-width:90px}
 #radarscrub::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;background:var(--cyan);cursor:pointer;box-shadow:0 0 0 3px rgba(86,184,208,.25)}
@@ -339,6 +342,7 @@ nav button.on{color:var(--amber);border-bottom-color:var(--amber)}
   <div id="map">
     <div id="fx"><div class="rain"></div><div class="ltg"></div><span class="bolt">⚡</span><span class="bolt">⚡</span><span class="bolt">⚡</span></div>
     <div id="placehint"><span>Tap the map to drop your report</span><a id="ph-cancel">Cancel</a></div>
+    <div id="radarzoomhint">⊘ Zoom out to see radar</div>
     <div id="radarbar" class="hidden">
       <button id="radarplay" title="Play / pause">❚❚</button>
       <input type="range" id="radarscrub" min="0" max="1" value="0">
@@ -393,7 +397,8 @@ const ACTION={
 };
 function bucketOf(ev){ if(/Tornado Warning/.test(ev))return'tornado'; if(/Tornado Watch/.test(ev))return'tornadoWatch'; if(/Severe Thunderstorm/.test(ev))return'severe'; if(/Flash Flood/.test(ev))return'flashflood'; if(/Flood/.test(ev))return'flood'; if(/Winter|Ice|Snow/.test(ev))return'winter'; if(/Wind/.test(ev))return'wind'; if(/Watch/.test(ev))return'watch'; return'default'; }
 
-const map=L.map('map',{zoomControl:false}).setView(RVA,9);
+const RADAR_MAX_ZOOM=8;  /* radar data exists only to here; above this we hide the layer entirely so the placeholder can never be requested */
+const map=L.map('map',{zoomControl:false}).setView(RVA,8);
 L.control.zoom({position:'topleft'}).addTo(map);
 const baseStandard=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19});
 const baseSat=L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{attribution:'Imagery &copy; Esri',maxZoom:19});
@@ -444,7 +449,7 @@ async function initRadar(){
     if(radarVisible) rvLayers.forEach(l=>l.addTo(map));
     radarUpdated=rvFrames[rvNowIdx].time*1000;
     setupRadarBar(); showFrame(rvIdx); if(radarPlaying) playRadar();
-    renderGlance();
+    renderGlance(); radarZoomGuard();
   }catch(e){ radarMode='static'; useIEM(); document.getElementById('radarbar').classList.add('hidden'); }
 }
 function useIEM(){ if(!iemLayer) iemLayer=L.tileLayer(IEM_URL,{opacity:radarOpacity,zIndex:250,maxZoom:19,maxNativeZoom:RV_MAXNATIVE,errorTileUrl:BLANK_TILE,attribution:'Radar: NWS / Iowa Mesonet'}); if(radarVisible) iemLayer.addTo(map); radarUpdated=Date.now(); renderGlance(); }
@@ -507,7 +512,7 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
   L.DomEvent.disableClickPropagation(div); L.DomEvent.disableScrollPropagation(div);
   div.querySelector('#mapctl-head').addEventListener('click',()=>div.classList.toggle('collapsed'));
   div.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.l,on=b.classList.toggle('on');
-    if(k==='radar') setRadarVisible(on);
+    if(k==='radar') radarZoomGuard();
     else if(k==='wind') setWind(on);
     else if(k==='fx'){ fxOn=on; updateFX(); }
     else (on?map.addLayer(layers[k]):map.removeLayer(layers[k]));
@@ -519,6 +524,11 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
   return div;
 }});
 map.addControl(new MapCtl());
+
+/* hide radar above the zoom where data exists, so the "Zoom Level Not Supported" tile is never requested */
+function radarChipOn(){ const c=document.querySelector('.chip[data-l=radar]'); return c?c.classList.contains('on'):true; }
+function radarZoomGuard(){ const allowed=map.getZoom()<=RADAR_MAX_ZOOM, want=radarChipOn(); setRadarVisible(allowed&&want); const h=document.getElementById('radarzoomhint'); if(h) h.classList.toggle('on', want&&!allowed); }
+map.on('zoomend',radarZoomGuard);
 
 function syncGlanceHeight(){ const h=document.getElementById('glance').offsetHeight; document.documentElement.style.setProperty('--glh',h+'px'); setTimeout(()=>map.invalidateSize(),50); }
 window.addEventListener('resize',syncGlanceHeight);
@@ -552,7 +562,7 @@ function renderGlance(){
   const facts=[]; if(lastCond) facts.push(`${lastCond.temp}° ${lastCond.cond}`); if(forecastSummary) facts.push(forecastSummary);
   g.className=cls;
   g.innerHTML=`<div class="gl-main"><span class="gl-dot"></span><div><div class="gl-line">${esc(status)}</div><div class="gl-sub">${esc(action)}</div></div></div>
-    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b></div></div>`;
+    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R9</div></div>`;
   syncGlanceHeight();
 }
 
@@ -604,7 +614,7 @@ function setUserLoc(lat,lon,acc,opts={}){
   userLoc={lat,lon,acc:acc||0,manual:opts.manual||false};
   if(!userMarker){ userMarker=L.marker([lat,lon],{icon:youIcon(),zIndexOffset:1000}).addTo(map).bindPopup('You are here'); userAcc=L.circle([lat,lon],{radius:acc||0,color:'#56B8D0',weight:1,fillColor:'#56B8D0',fillOpacity:.06,interactive:false}).addTo(map); }
   else { userMarker.setLatLng([lat,lon]); userAcc.setLatLng([lat,lon]).setRadius(acc||0); }
-  if(opts.center) map.setView([lat,lon],10); else if(followMode&&moved>0.03) map.panTo([lat,lon]);
+  if(opts.center) map.setView([lat,lon],8); else if(followMode&&moved>0.03) map.panTo([lat,lon]);
   computeImpact(); maybeLoadConditions(lat,lon);
   document.getElementById('locatebtn').classList.toggle('live',!opts.manual&&watchId!=null);
 }
