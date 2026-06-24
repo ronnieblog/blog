@@ -397,7 +397,6 @@ const ACTION={
 };
 function bucketOf(ev){ if(/Tornado Warning/.test(ev))return'tornado'; if(/Tornado Watch/.test(ev))return'tornadoWatch'; if(/Severe Thunderstorm/.test(ev))return'severe'; if(/Flash Flood/.test(ev))return'flashflood'; if(/Flood/.test(ev))return'flood'; if(/Winter|Ice|Snow/.test(ev))return'winter'; if(/Wind/.test(ev))return'wind'; if(/Watch/.test(ev))return'watch'; return'default'; }
 
-const RADAR_MAX_ZOOM=8;  /* radar data exists only to here; above this we hide the layer entirely so the placeholder can never be requested */
 const map=L.map('map',{zoomControl:false}).setView(RVA,8);
 L.control.zoom({position:'topleft'}).addTo(map);
 const baseStandard=L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',{attribution:'&copy; OpenStreetMap &copy; CARTO',maxZoom:19});
@@ -430,14 +429,18 @@ function stampLine(){ return `Radar ${fmtClock(radarUpdated)} · Alerts ${fmtClo
 /* ===================== ANIMATED RADAR (RainViewer + fallback) ===================== */
 const RV_API='https://api.rainviewer.com/public/weather-maps.json';
 const RV_COLOR=4;
-const RV_MAXNATIVE=8;    /* radar sources have data only to ~this zoom; cap so Leaflet upscales instead of requesting the "Zoom Level Not Supported" placeholder */
+const RV_MAXNATIVE=8;
+const RADAR_ANIM_MAX=7;     /* RainViewer animation only renders to ~this zoom here; above it we switch to static IEM, which renders at every zoom */
+const IEM_MAXNATIVE=12;
 const BLANK_TILE='data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 const IEM_URL='https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png';
 let rvHost='',rvFrames=[],rvLayers=[],rvIdx=0,rvNowIdx=0;
-let radarMode='loading',radarVisible=true,radarOpacity=0.72,radarSpeed=600,radarTimer=null,radarPlaying=true;
-let iemLayer=null;
+let radarMode='loading',radarOpacity=0.72,radarSpeed=600,radarTimer=null,radarPlaying=true;
+let iemLayer=null,iemShown=false;
 function rvTile(path){ return `${rvHost}${path}/256/{z}/{x}/{y}/${RV_COLOR}/1_1.png`; }
 function frameLabel(f){ const dt=Math.round((f.time*1000-Date.now())/60000); if(Math.abs(dt)<3)return'now'; return dt<0?`${-dt} min ago`:`+${dt} min`; }
+function radarShowing(){ const c=document.querySelector('.chip[data-l=radar]'); return c?c.classList.contains('on'):true; }
+function buildIEM(){ if(!iemLayer) iemLayer=L.tileLayer(IEM_URL,{opacity:radarOpacity,zIndex:250,maxZoom:19,maxNativeZoom:IEM_MAXNATIVE,errorTileUrl:BLANK_TILE,attribution:'Radar: NWS / Iowa Mesonet'}); }
 async function initRadar(){
   try{
     const j=await (await fetch(RV_API)).json();
@@ -446,20 +449,33 @@ async function initRadar(){
     if(!rvHost||!rvFrames.length) throw new Error('no frames');
     rvNowIdx=Math.max(0,past.length-1); rvIdx=rvNowIdx; radarMode='animated';
     rvLayers=rvFrames.map(f=>L.tileLayer(rvTile(f.path),{opacity:0,zIndex:250,maxZoom:19,maxNativeZoom:RV_MAXNATIVE,errorTileUrl:BLANK_TILE,attribution:'Radar © RainViewer · NWS'}));
-    if(radarVisible) rvLayers.forEach(l=>l.addTo(map));
+    rvLayers.forEach(l=>l.addTo(map));
     radarUpdated=rvFrames[rvNowIdx].time*1000;
-    setupRadarBar(); showFrame(rvIdx); if(radarPlaying) playRadar();
-    renderGlance(); radarZoomGuard();
-  }catch(e){ radarMode='static'; useIEM(); document.getElementById('radarbar').classList.add('hidden'); }
+    setupRadarBar(); renderGlance();
+  }catch(e){ radarMode='static'; }
+  applyRadar();
 }
-function useIEM(){ if(!iemLayer) iemLayer=L.tileLayer(IEM_URL,{opacity:radarOpacity,zIndex:250,maxZoom:19,maxNativeZoom:RV_MAXNATIVE,errorTileUrl:BLANK_TILE,attribution:'Radar: NWS / Iowa Mesonet'}); if(radarVisible) iemLayer.addTo(map); radarUpdated=Date.now(); renderGlance(); }
-function showFrame(i){ if(radarMode!=='animated'||!rvLayers.length)return; rvIdx=(i+rvLayers.length)%rvLayers.length; rvLayers.forEach((l,k)=>l.setOpacity(k===rvIdx&&radarVisible?radarOpacity:0)); const scrub=document.getElementById('radarscrub'),lab=document.getElementById('radartime'); if(scrub)scrub.value=rvIdx; if(lab)lab.textContent=frameLabel(rvFrames[rvIdx]); }
+/* opacity of the current RainViewer frame, only when animating at overview zoom */
+function showFrame(i){ if(!rvLayers.length)return; rvIdx=(i+rvLayers.length)%rvLayers.length; const animOn=radarShowing()&&radarMode==='animated'&&map.getZoom()<=RADAR_ANIM_MAX; rvLayers.forEach((l,k)=>l.setOpacity(k===rvIdx&&animOn?radarOpacity:0)); const scrub=document.getElementById('radarscrub'),lab=document.getElementById('radartime'); if(scrub)scrub.value=rvIdx; if(lab)lab.textContent=frameLabel(rvFrames[rvIdx]); }
 function playRadar(){ if(radarTimer)clearInterval(radarTimer); radarTimer=setInterval(()=>{ showFrame(rvIdx+1); if(rvIdx===rvNowIdx){ clearInterval(radarTimer); radarTimer=setTimeout(()=>{ if(radarPlaying)playRadar(); },900); } },radarSpeed); const b=document.getElementById('radarplay'); if(b)b.textContent='❚❚'; }
 function pauseRadar(){ if(radarTimer){clearInterval(radarTimer);clearTimeout(radarTimer);radarTimer=null;} const b=document.getElementById('radarplay'); if(b)b.textContent='►'; }
-function setRadarVisible(on){ radarVisible=on; if(radarMode==='animated'){ if(on){rvLayers.forEach(l=>map.hasLayer(l)||l.addTo(map)); showFrame(rvIdx); if(radarPlaying)playRadar();} else {pauseRadar(); rvLayers.forEach(l=>l.setOpacity(0));} document.getElementById('radarbar').classList.toggle('hidden',!on); } else if(iemLayer){ on?iemLayer.addTo(map):map.removeLayer(iemLayer); } }
-function setRadarOpacity(v){ radarOpacity=v; if(radarMode==='animated') showFrame(rvIdx); else if(iemLayer) iemLayer.setOpacity(v); }
-function setupRadarBar(){ const bar=document.getElementById('radarbar'),scrub=document.getElementById('radarscrub'); bar.classList.remove('hidden'); scrub.min=0; scrub.max=rvLayers.length-1; scrub.value=rvIdx; }
-async function refreshRadar(){ if(radarMode==='static'){ if(iemLayer&&radarVisible){iemLayer.setUrl(IEM_URL+'?_='+Date.now());radarUpdated=Date.now();renderGlance();} return; } rvLayers.forEach(l=>map.removeLayer(l)); if(radarTimer){clearInterval(radarTimer);clearTimeout(radarTimer);} await initRadar(); }
+/* the one decision point: animation at overview zoom, static IEM when zoomed in, nothing when toggled off */
+function applyRadar(){
+  const want=radarShowing(), z=map.getZoom();
+  const useAnim = want && radarMode==='animated' && z<=RADAR_ANIM_MAX;
+  const useStatic = want && !useAnim;
+  if(rvLayers.length){
+    if(useAnim){ rvLayers.forEach(l=>map.hasLayer(l)||l.addTo(map)); showFrame(rvIdx); if(radarPlaying)playRadar(); }
+    else { pauseRadar(); rvLayers.forEach(l=>l.setOpacity(0)); }
+  }
+  if(useStatic){ buildIEM(); if(!map.hasLayer(iemLayer))iemLayer.addTo(map); iemLayer.setOpacity(radarOpacity); iemShown=true; }
+  else if(iemLayer&&map.hasLayer(iemLayer)){ map.removeLayer(iemLayer); iemShown=false; }
+  document.getElementById('radarbar').classList.toggle('hidden', !useAnim);
+  const h=document.getElementById('radarzoomhint'); if(h){ const note=useStatic&&radarMode==='animated'; h.classList.toggle('on',note); if(note) h.textContent='▷ Current radar — zoom out to animate'; }
+}
+function setRadarOpacity(v){ radarOpacity=v; if(rvLayers.length) showFrame(rvIdx); if(iemLayer) iemLayer.setOpacity(v); }
+function setupRadarBar(){ const scrub=document.getElementById('radarscrub'); scrub.min=0; scrub.max=Math.max(1,rvLayers.length-1); scrub.value=rvIdx; }
+async function refreshRadar(){ if(iemLayer&&iemShown){ iemLayer.setUrl(IEM_URL+'?_='+Date.now()); radarUpdated=Date.now(); renderGlance(); } if(radarMode==='animated'){ rvLayers.forEach(l=>map.removeLayer(l)); if(radarTimer){clearInterval(radarTimer);clearTimeout(radarTimer);} await initRadar(); } else { radarUpdated=Date.now(); renderGlance(); } }
 document.getElementById('radarplay').addEventListener('click',()=>{ radarPlaying=!radarPlaying; radarPlaying?playRadar():pauseRadar(); });
 document.getElementById('radarscrub').addEventListener('input',e=>{ radarPlaying=false; pauseRadar(); showFrame(+e.target.value); });
 document.getElementById('radarspeed').addEventListener('click',e=>{ radarSpeed=radarSpeed===600?350:radarSpeed===350?900:600; e.target.textContent=radarSpeed===350?'2×':radarSpeed===600?'1×':'½×'; if(radarPlaying)playRadar(); });
@@ -512,7 +528,7 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
   L.DomEvent.disableClickPropagation(div); L.DomEvent.disableScrollPropagation(div);
   div.querySelector('#mapctl-head').addEventListener('click',()=>div.classList.toggle('collapsed'));
   div.querySelectorAll('.chip').forEach(b=>b.addEventListener('click',()=>{ const k=b.dataset.l,on=b.classList.toggle('on');
-    if(k==='radar') radarZoomGuard();
+    if(k==='radar') applyRadar();
     else if(k==='wind') setWind(on);
     else if(k==='fx'){ fxOn=on; updateFX(); }
     else (on?map.addLayer(layers[k]):map.removeLayer(layers[k]));
@@ -526,9 +542,7 @@ const MapCtl=L.Control.extend({options:{position:'topright'},onAdd:function(){
 map.addControl(new MapCtl());
 
 /* hide radar above the zoom where data exists, so the "Zoom Level Not Supported" tile is never requested */
-function radarChipOn(){ const c=document.querySelector('.chip[data-l=radar]'); return c?c.classList.contains('on'):true; }
-function radarZoomGuard(){ const allowed=map.getZoom()<=RADAR_MAX_ZOOM, want=radarChipOn(); setRadarVisible(allowed&&want); const h=document.getElementById('radarzoomhint'); if(h) h.classList.toggle('on', want&&!allowed); }
-map.on('zoomend',radarZoomGuard);
+map.on('zoomend',applyRadar);
 
 function syncGlanceHeight(){ const h=document.getElementById('glance').offsetHeight; document.documentElement.style.setProperty('--glh',h+'px'); setTimeout(()=>map.invalidateSize(),50); }
 window.addEventListener('resize',syncGlanceHeight);
@@ -562,7 +576,7 @@ function renderGlance(){
   const facts=[]; if(lastCond) facts.push(`${lastCond.temp}° ${lastCond.cond}`); if(forecastSummary) facts.push(forecastSummary);
   g.className=cls;
   g.innerHTML=`<div class="gl-main"><span class="gl-dot"></span><div><div class="gl-line">${esc(status)}</div><div class="gl-sub">${esc(action)}</div></div></div>
-    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R9</div></div>`;
+    <div class="gl-aside"><div class="gl-facts">${facts.length?esc(facts.join(' · ')):'—'}</div><div class="gl-meta">${stampLine()} &nbsp;·&nbsp; Sources: NWS, RainViewer, USGS, Open-Meteo &nbsp;·&nbsp; <b>911 for emergencies — informational only</b> &nbsp;·&nbsp; build R10</div></div>`;
   syncGlanceHeight();
 }
 
